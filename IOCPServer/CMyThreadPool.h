@@ -1,14 +1,32 @@
 #pragma once
-#include "afx.h"
+//#include "afx.h"
 #include <atomic>
 #include <vector>
 #include <mutex>
+#include <iostream>
 
 class ThreadFuncBase
 {
+public:
+	virtual int Func() = 0;
+};
 
+class CMyFunc : public ThreadFuncBase
+{
+public:
+	CMyFunc(int iNumber)
+	{
+		m_iNumber = iNumber;
+	}
+	int Func() override
+	{
+		return m_iNumber;
+	}
+private:
+	int m_iNumber;
 };
 typedef int(ThreadFuncBase::* FUNCTYPE)();
+
 class ThreadWorker
 {
 public:
@@ -17,16 +35,18 @@ public:
 		thiz = NULL;
 		func = NULL;
 	}
+	
 	ThreadWorker(ThreadFuncBase* obj, FUNCTYPE f) : thiz(obj), func(f)
 	{
 
 	}
+	
 	ThreadWorker(const ThreadWorker& worker)
 	{
 		thiz = worker.thiz;
 		func = worker.func;
 	}
-
+	
 	ThreadWorker& operator=(const ThreadWorker& worker)
 	{
 		if (this != (&worker))
@@ -37,7 +57,7 @@ public:
 		return *this;
 	}
 
-	bool IsValid()
+	bool IsValid() const
 	{
 		return (thiz != NULL) && (func != NULL);
 	}
@@ -65,9 +85,23 @@ public:
 		m_hThread = NULL;
 	}
 
-	bool Start()
+	~CMyThread()
 	{
+		Stop();
+	}
+
+	CMyThread(const CMyThread& thread)
+	{
+		m_hThread = thread.m_hThread;
+		m_bStatus = thread.m_bStatus;
+		//m_worker = thread.m_worker;
+	}
+
+	bool Start(int iThreadIndex)
+	{
+		std::cout << "Start Thread :" << iThreadIndex << std::endl;
 		m_bStatus = true;
+		m_iThreadIndex = iThreadIndex;
 		m_hThread = (HANDLE)_beginthread(&CMyThread::threadEntry, 0, this);
 		if (!IsValid())
 		{
@@ -78,57 +112,72 @@ public:
 
 	bool Stop()
 	{
-
+		if (m_bStatus)
+		{
+			m_bStatus = false;
+		}
+		bool ret = WaitForSingleObject(m_hThread, INFINITE) == WAIT_OBJECT_0;
+		if (m_worker.load() != NULL)
+		{
+			ThreadWorker* pWorker = m_worker.load();
+			m_worker.store(NULL);
+			delete pWorker;
+		}
+		return ret;
 	}
 
-	bool IsValid()  //返回true表示线程有效,返回false表示线程异常或者已经终止
+	bool IsValid() //返回true表示线程有效,返回false表示线程异常或者已经终止
 	{
 		if (m_hThread == NULL || m_hThread == INVALID_HANDLE_VALUE)	return false;
 		return WaitForSingleObject(m_hThread, 0) == WAIT_TIMEOUT;
 	}
 
-	bool SetWorker(const ::ThreadWorker& worker)
-	{
-
-	}
-
 	void UpdateWorker(const ThreadWorker& worker)
 	{
-		m_worker.store(worker);
+		if (!worker.IsValid())
+		{
+			m_worker.store(NULL);
+			return;
+		}
+		if (m_worker.load() != NULL)
+		{
+			ThreadWorker* pWorker = m_worker.load();
+			m_worker.store(NULL);
+			delete pWorker;
+		}
+		m_worker.store(new ThreadWorker(worker));
 	}
 
 	bool IsIdle()
 	{
-		return m_worker.load().IsValid();
+		if (NULL == m_worker)
+		{
+			return true;
+		}
+		return !m_worker.load()->IsValid();
 	}
 
-protected:
-	//返回值小于0，则终止线程循环，大于0则警告日志，等于0表示正常
-	virtual int each_step() = 0;
-
-private:
 	virtual void threadWorker()
 	{
 		while (m_bStatus)
 		{
-			ThreadWorker worker = m_worker.load();
-			if (worker.IsValid())
+			if (m_worker)
 			{
-				int ret = worker();
-				if (ret != 0)
+				ThreadWorker* worker = m_worker.load();
+				if (worker->IsValid())
 				{
-					//CString str;
-					//str.Format(_T("thread found warning code %d\r\n"),ret);
-					//OutputDebugString(str);
+					int ret = (*worker)();
+					std::cout << "ThreadIndex:" << m_iThreadIndex << "\tResult:" << ret << std::endl;
+					if (ret != 0)
+					{
+						
+					}
+					if (ret < 0)
+					{
+						m_worker.store(NULL);
+					}
+					Sleep(2000);
 				}
-				if (ret < 0)
-				{
-					m_worker.store(::ThreadWorker());
-				}
-			}
-			else
-			{
-				Sleep(1);
 			}
 		}
 	}
@@ -143,11 +192,11 @@ private:
 		_endthread();
 	}
 
-
 private:
 	HANDLE m_hThread;
 	bool m_bStatus;  //false表示线程将要关闭，true表示线程正在运行
-	std::atomic<ThreadWorker> m_worker;
+	std::atomic<ThreadWorker*> m_worker;
+	int m_iThreadIndex;
 };
 
 
@@ -172,7 +221,7 @@ public:
 		bool ret = true;
 		for (size_t i = 0; i < m_vctThread.size(); ++i)
 		{
-			if (!m_vctThread[i].Start())
+			if (!m_vctThread[i].Start(i))
 			{
 				ret = false;
 				break;
@@ -197,7 +246,7 @@ public:
 	}
 
 	//返回-1表示分配失败,返回 >0的整数为线程的index
-	int DispatchWorker(const ThreadWorker& worker)
+	int DispatchWorker(ThreadWorker& worker)
 	{
 		int index = -1;
 		m_lock.lock();

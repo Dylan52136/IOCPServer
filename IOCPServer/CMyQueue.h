@@ -43,9 +43,9 @@ public:
 	{
 		m_hCompeletionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE,NULL,NULL,1);
 		m_thread = INVALID_HANDLE_VALUE;
-		if (m_hCompeletionPort != nullptr)
+		if (m_hCompeletionPort != NULL)
 		{
-			m_thread = (HANDLE)_beginthread(&CMyQueue<T>::threadEntry, 0, m_hCompeletionPort);
+			m_thread = (HANDLE)_beginthread(&CMyQueue<T>::threadEntry, 0, this);
 		}
 	}
 
@@ -83,9 +83,9 @@ public:
 			return ret;
 		}
 		ret = WaitForSingleObject(hEvent, INFINITE) == WAIT_OBJECT_0;
+		data = pParam->data;
 		if (ret)
 		{
-			delete pParam->data;
 			delete pParam;
 		}
 		return ret;
@@ -112,7 +112,6 @@ public:
 		}
 		return -1;
 	}
-
 	void Clear()
 	{
 		if (m_lock)	return false;
@@ -128,11 +127,47 @@ private:
 		thiz->threadMain();
 		_endthread();
 	}
+
+	void DealParam(IOCP_PARAM* pParam)
+	{
+		switch (pParam->nOperator)
+		{
+		case EQPush:
+			m_lstData.push_back(pParam->data);
+			delete pParam;
+			break;
+		case EQPop:
+			if (m_lstData.size() > 0)
+			{
+				pParam->data = m_lstData.front();
+				m_lstData.pop_front();
+			}
+			if (pParam->hEvent != NULL)
+			{
+				SetEvent(pParam->hEvent);
+			}
+			break;
+		case EQSize:
+			pParam->nOperator = m_lstData.size();
+			if (pParam->hEvent != NULL)
+			{
+				SetEvent(pParam->hEvent);
+			}
+			break;
+		case EQClear:
+			m_lstData.clear();
+			break;
+		default:
+			break;
+		}
+	}
+
 	void threadMain()
 	{
 		DWORD dwTransferred = 0;
 		ULONG_PTR CompletionKey = 0;
-		OVERLAPPED* pOverlapped = NULL;
+		IOCP_PARAM* pParam = NULL;
+		LPOVERLAPPED pOverlapped = NULL;
 		while (GetQueuedCompletionStatus(m_hCompeletionPort, &dwTransferred, &CompletionKey, &pOverlapped, INFINITE))
 		{
 			if ((dwTransferred == 0) && (CompletionKey == NULL))
@@ -140,39 +175,12 @@ private:
 				printf("thread is prepare to exit!\r\n");
 				break;
 			}
-			IOCP_PARAM* pParam = (IOCP_PARAM*)CompletionKey;
-			switch (pParam->nOperator)
-			{
-			case EQPush:
-				printf("IocpListPush\r\n");
-				m_lstData.push_back(pParam->data);
-				delete pParam;
-				break;
-			case EQPop:
-				if (m_lstData.size() > 0)
-				{
-					pParam->data = m_lstData.front();
-					m_lstData.pop_front();
-				}
-				if (pParam->hEvent != NULL)
-				{
-					SetEvent(pParam->hEvent);
-				}
-				break;
-			case EQSize:
-				pParam->nOperator = m_lstData.size();
-				if (pParam->hEvent != NULL)
-				{
-					SetEvent(pParam->hEvent);
-				}
-				break;
-			case EQClear:
-				m_lstData.clear();
-				break;	
-			default:
-				break;
-			}
+			pParam = (IOCP_PARAM*)CompletionKey;
+			DealParam(pParam);
+			Sleep(1);
 		}
+		GetQueuedCompletionStatus(m_hCompeletionPort, &dwTransferred, &CompletionKey, &pOverlapped, 0);
+		CloseHandle(m_hCompeletionPort);
 	}
 
 private:
