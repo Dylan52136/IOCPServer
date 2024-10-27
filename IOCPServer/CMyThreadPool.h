@@ -11,20 +11,22 @@ public:
 	virtual int Func() = 0;
 };
 
-class CMyFunc : public ThreadFuncBase
-{
-public:
-	CMyFunc(int iNumber)
-	{
-		m_iNumber = iNumber;
-	}
-	int Func() override
-	{
-		return m_iNumber;
-	}
-private:
-	int m_iNumber;
-};
+//Test
+//class CMyFunc : public ThreadFuncBase
+//{
+//public:
+//	CMyFunc(int iNumber)
+//	{
+//		m_iNumber = iNumber;
+//	}
+//	int Func() override
+//	{
+//		return m_iNumber;
+//	}
+//private:
+//	int m_iNumber;
+//};
+
 typedef int(ThreadFuncBase::* FUNCTYPE)();
 
 class ThreadWorker

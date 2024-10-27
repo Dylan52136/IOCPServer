@@ -18,12 +18,18 @@
     <ClCompile Include="main.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="CMyServer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CMyQueue.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="CMyThreadPool.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CMyServer.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
