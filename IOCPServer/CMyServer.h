@@ -61,14 +61,14 @@ public:
 
 private:
     void CreateSocket();
-    int Func() override;
+    int ServerWorker();
 private:
     CMyThreadPool m_pool;
     HANDLE m_hIOCP;
     SOCKET m_sock;
     std::map<SOCKET, std::shared_ptr<CMyClient>> m_client;
     sockaddr_in m_addr;
-    CMyQueue<CMyClient> m_lstClient;
+    CMyQueue<std::shared_ptr<CMyClient>> m_lstClient;
     std::string m_strIp;
     short m_sPort;
 
@@ -84,7 +84,7 @@ public:
     //加载GetAcceptExSockaddrs 函数指针
     bool InitializeGetAcceptExSockaddrs(SOCKET listenSocket);
 
-    int Func() override;
+    int AcceptWorker();
 
 private:
     LPFN_GETACCEPTEXSOCKADDRS lpfnGetAcceptExSockaddrs = NULL;
@@ -98,7 +98,7 @@ class SendOverlapped : public CMyOverlapped, ThreadFuncBase
 public:
     SendOverlapped();
 
-    int Func() override;
+    int SendWorker();
 
 };
 typedef SendOverlapped<ESend> SENDOVERLAPPED;
@@ -108,7 +108,7 @@ class RecvOverlapped : public CMyOverlapped, ThreadFuncBase
 {
 public:
     RecvOverlapped();
-    int Func() override;
+    int RecvWorker();
 
 };
 typedef RecvOverlapped<ERecv> RECVOVERLAPPED;
@@ -124,17 +124,12 @@ public:
         m_buffer.resize(1024);
     }
 
-    int Func() override
-    {
-
-    }
-
 };
 typedef ErrorOverlapped<EError> ERROROVERLAPPED;
 
 
 
-class CMyClient
+class CMyClient : public ThreadFuncBase
 {
 public:
     CMyClient();
@@ -164,6 +159,8 @@ public:
     size_t GetBufferSize() const;
     DWORD& GetFlags();
     int Recv();
+    int Send(void* buffer, size_t nSize);
+    int SendData(std::vector<char>& data);
 private:
     SOCKET m_sock;
     std::vector<char> m_buffer;
@@ -177,4 +174,5 @@ private:
     sockaddr_in m_rAddr;
     DWORD m_received;
     DWORD m_flags;
+    CMySendQueue<std::vector<char>> m_vctSend;  //发送数据队列
 };

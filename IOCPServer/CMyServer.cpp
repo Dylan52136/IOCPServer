@@ -42,7 +42,7 @@ bool CMyServer::StartServer()
     }
     CreateIoCompletionPort((HANDLE)m_sock, m_hIOCP, (ULONG_PTR)this, 0);
     m_pool.Invoke();
-    ThreadWorker iocpWorker(ThreadWorker(this, (FUNCTYPE)&CMyServer::Func));
+    ThreadWorker iocpWorker(ThreadWorker(this, (FUNCTYPE)&CMyServer::ServerWorker));
     m_pool.DispatchWorker(iocpWorker);
     if (!NewAccept())
     {
@@ -73,7 +73,7 @@ void CMyServer::CreateSocket()
     setsockopt(m_sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt)); //允许在本地地址被绑定的情况下重新绑定套接字
 }
 
-int CMyServer::Func()
+int CMyServer::ServerWorker()
 {
     DWORD transferred = 0;
     ULONG_PTR completionKey = 0;
@@ -114,14 +114,16 @@ int CMyServer::Func()
     return 0;
 }
 
+
 CMyClient::CMyClient() : 
     m_bIsBusy(false),
     m_flags(0),
     m_acceptOverlapped(new ACCEPTOVERLAPPED),
     m_sendOverlapped(new SENDOVERLAPPED),
-    m_recvOverlapped(new RECVOVERLAPPED)
+    m_recvOverlapped(new RECVOVERLAPPED),
+    m_vctSend(this,(SENDCALLBACK)&CMyClient::SendData)
 {
-    WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
+    WSASocket(PF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
     m_buffer.resize(1024);
     memset(&m_addr, 0, sizeof(sockaddr_in));
     memset(&m_lAddr, 0, sizeof(sockaddr_in));
@@ -178,12 +180,28 @@ int CMyClient::Recv()
     return 0;
 }
 
+int CMyClient::Send(void* buffer, size_t nSize)
+{
+    std::vector<char> data(nSize);
+    memcpy(data.data(), buffer, nSize);
+    if (m_vctSend.PushBack(data))
+    {
+        return 0;
+    }
+    return -1;
+}
+
+int CMyClient::SendData(std::vector<char>& data)
+{
+    return 0;
+}
+
 
 template<EnumMyOperator op>
 inline AcceptOverlapped<op>::AcceptOverlapped()
 {
     //m_worker = ThreadWorker(static_cast<ThreadFuncBase*>(this), static_cast<FUNCTYPE>(&AcceptOverlapped::Func));
-    m_worker = ThreadWorker(this, (FUNCTYPE)&AcceptOverlapped<op>::Func);
+    m_worker = ThreadWorker(this, (FUNCTYPE)&AcceptOverlapped<op>::AcceptWorker);
     m_operator = op;
     memset(&m_overlapped, 0, sizeof(m_overlapped));
     m_buffer.resize(1024);
@@ -214,7 +232,7 @@ bool AcceptOverlapped<op>::InitializeGetAcceptExSockaddrs(SOCKET listenSocket)
 }
 
 template<EnumMyOperator op>
-int AcceptOverlapped<op>::Func()
+int AcceptOverlapped<op>::AcceptWorker()
 {
     INT lLength = 0, rLength = 0;
     if (*(LPDWORD)*m_client > 0)
@@ -246,30 +264,33 @@ template<EnumMyOperator op>
 inline RecvOverlapped<op>::RecvOverlapped()
 {
     m_operator = op;
-    m_worker = ThreadWorker(this, (FUNCTYPE)&RecvOverlapped<op>::Func);
+    m_worker = ThreadWorker(this, (FUNCTYPE)&RecvOverlapped<op>::RecvWorker);
     memset(&m_overlapped, 0, sizeof(m_overlapped));
     m_buffer.resize(1024);
 }
 
 template<EnumMyOperator op>
-inline int RecvOverlapped<op>::Func()
+int RecvOverlapped<op>::RecvWorker()
 {
     int ret = m_client->Recv();
     return ret;
 }
 
-
 template<EnumMyOperator op>
 inline SendOverlapped<op>::SendOverlapped()
 {
     m_operator = op; 
-    m_worker = ThreadWorker(this, (FUNCTYPE)&SendOverlapped<op>::Func);
+    m_worker = ThreadWorker(this, (FUNCTYPE)&SendOverlapped<op>::SendWorker);
     memset(&m_overlapped, 0, sizeof(m_overlapped));
     m_buffer.resize(1024);
 }
 
 template<EnumMyOperator op>
-inline int SendOverlapped<op>::Func()
+int SendOverlapped<op>::SendWorker()
 {
-    return 0;
+    /*
+    * 1.Send可能不会立即完成
+    */
+    return -1;
 }
+

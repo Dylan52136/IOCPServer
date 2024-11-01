@@ -5,27 +5,7 @@
 #include <mutex>
 #include <iostream>
 
-class ThreadFuncBase
-{
-public:
-	virtual int Func() = 0;
-};
-
-//Test
-//class CMyFunc : public ThreadFuncBase
-//{
-//public:
-//	CMyFunc(int iNumber)
-//	{
-//		m_iNumber = iNumber;
-//	}
-//	int Func() override
-//	{
-//		return m_iNumber;
-//	}
-//private:
-//	int m_iNumber;
-//};
+class ThreadFuncBase{};
 
 typedef int(ThreadFuncBase::* FUNCTYPE)();
 
@@ -82,7 +62,8 @@ private:
 class CMyThread
 {
 public:
-	CMyThread()
+	CMyThread():
+		m_bStatus(true)
 	{
 		m_hThread = NULL;
 	}
